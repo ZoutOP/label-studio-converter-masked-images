@@ -29,10 +29,12 @@ const arrayForWordSize = (ws: number, n: number) => {
 """
 import os
 import uuid
+from typing import Optional
+
 import numpy as np
 import logging
 
-from PIL import Image
+from PIL import Image, ImageDraw
 from collections import defaultdict
 from itertools import groupby
 
@@ -96,6 +98,35 @@ def decode_rle(rle, print_params: bool = False):
                 out[i] = val
                 i += 1
     return out
+
+
+def decode_coordinates_from_mask(image: np.ndarray) -> Optional[np.ndarray]:
+    """ Decode the image of a (height, width) to a list of x and y coordinates. """
+    if image is None:
+        return None  # No valid image.
+    bool_mask = (image > 0)  # Assume mask is denoted by values greater than 0.
+    if len(bool_mask.shape) == 3:  # (height, width, channel)  Convert bool mask to (height, width)
+        bool_mask = bool_mask.any(axis=-1)  # Checks any value is greater than 0.
+    return np.argwhere(bool_mask)  # Returns the list of pixel coordinates.
+
+
+def mask_from_rle(rle, shape) -> np.ndarray:
+    """ Return a mask image from rle data and a given width and height. """
+    # Reshape and then grab the third index to be (height, width) shape.
+    return np.reshape(decode_rle(rle), [shape[0], shape[1], 4])[:, :, 3]  # Create  mask.
+
+
+def mask_from_contour(points, shape) -> np.ndarray:
+    """ Return a mask image from a list of outlining contour points. """
+    pts = np.array(points)
+    if pts.dtype == float:
+        # Normalise all point values by the shape.
+        pts = (np.round(pts * shape)).astype(int)
+    if pts.dtype != int:
+        raise AttributeError(f"Invalid numpy dtype for array points. Expected `int` or `float` and got: {pts.dtype}")
+    mask = Image.new('L', shape, color=0)  # Create mask image. L mode for 8 bit colour.
+    ImageDraw.Draw(mask).polygon(points, fill=255)  # Draw points to mask.
+    return np.array(mask).astype(np.uint8)
 
 
 def decode_from_annotation(from_name, results):
