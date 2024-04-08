@@ -983,17 +983,9 @@ class Converter(object):
                 output_label_dir, filename + '.txt'
             )
 
-            def make_label_file(msg: str):
-                logger.warning(msg)
-                if os.path.exists(label_path):
-                    return
-                with open(label_path, 'x'):
-                    pass
-
             # Skip tasks without annotations
             if not item['output']:
-                make_label_file('No completions found for item #' + str(item_idx))
-                continue
+                logger.warning('No completions found for item #' + str(item_idx))
 
             # concatenate results over all tag names
             labels = []
@@ -1001,22 +993,21 @@ class Converter(object):
                 labels += item['output'][key]
 
             if len(labels) == 0:
-                make_label_file(f'Empty bboxes for {item["output"]}')
-                continue
+                logger.warning(f'Empty bboxes for {item["output"]}')
 
             annotation_id = item['annotation_id']
-            annotation_shape = None
+            task_id = item['id']
+            with Image.open(output_dir + '/' + image_path) as img:
+                annotation_shape = (img.height, img.width)  # Get shape.e
             annotations = []
+            instance_id = 0
+
             for label in labels:
                 # Get task names.
-                task_id = label['id']
                 label_shape = (label['original_height'], label['original_width'])
-                if annotation_shape is None:
-                    annotation_shape = label_shape
-                elif annotation_shape != label_shape:
+                if annotation_shape != label_shape:
                     logger.warning(f'Shape of masks do not match. {annotation_shape} != {label_shape}')
 
-                category_name = None
                 category_names = []  # considering multi-label
                 for key in ['rectanglelabels', 'polygonlabels', 'labels', 'brushlabels']:
                     if key in label and len(label[key]) > 0:
@@ -1029,7 +1020,6 @@ class Converter(object):
                         "Unknown label type or labels are empty: " + str(label)
                     )
                     continue
-                instance_id = 0
                 for category_name in category_names:
                     if category_name not in category_name_to_id:
                         category_id = len(categories)
@@ -1070,10 +1060,12 @@ class Converter(object):
                         # Error no coordinates are created.
                         raise ValueError(f"Unknown label type {label}")
 
+
                     # Add instance
-                    annotations.append([
+                    annotations.append(
                         [task_id, instance_id, category_id] + [point for coord in coordinates for point in coord]
-                    ])
+                    )
+                    instance_id += 1  # Increment id.
 
             # Create header for mask file.
             annotation_header = [
@@ -1081,17 +1073,17 @@ class Converter(object):
                 annotation_shape[1],  # width
                 annotation_shape[0],  # height
                 len(categories),
-                *[cat for category in categories for cat in category]
+                *[cat for category in categories for cat in (category['id'], category['name'])]
             ]
             with open(label_path, 'w') as f:
                 # Saving the annotation file.
-                for annotation in annotations:
-                    f.write(f"{annotation_header}\n")
-                    for idx, l in enumerate(annotation):
-                        if idx == len(annotation) - 1:
-                            f.write(f"{l}\n")
-                        else:
-                            f.write(f"{l} ")
+                f.write(" ".join([str(v) for v in annotation_header]) + "\n")
+                for index, annotation in enumerate(annotations):
+                    line = " ".join(str(v) for v in annotation)
+                    if index == len(annotation) - 1:
+                        f.write(line)
+                    else:
+                        f.write(line + "\n")
         with open(class_file, 'w', encoding='utf8') as f:
             for c in categories:
                 f.write(c['name'] + '\n')

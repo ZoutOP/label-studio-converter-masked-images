@@ -107,7 +107,8 @@ def decode_coordinates_from_mask(image: np.ndarray) -> Optional[np.ndarray]:
     bool_mask = (image > 0)  # Assume mask is denoted by values greater than 0.
     if len(bool_mask.shape) == 3:  # (height, width, channel)  Convert bool mask to (height, width)
         bool_mask = bool_mask.any(axis=-1)  # Checks any value is greater than 0.
-    return np.argwhere(bool_mask)  # Returns the list of pixel coordinates.
+    # Roll coordinates so the list goes from y, x to x, y
+    return np.roll(np.argwhere(bool_mask), 1, axis=1)  # Returns the list of pixel coordinates.
 
 
 def mask_from_rle(rle, shape) -> np.ndarray:
